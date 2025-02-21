@@ -1,0 +1,174 @@
+import java.util.List;
+import java.util.Date;
+import java.util.Calendar;
+
+public class PrescriptionValidator {
+
+    private final Validator<Patient> patientStateValidator;
+    private final ValidatorWithMedications drugInteractionValidator;
+    private final ValidatorWithMedications clinicalProtocolValidator;
+    private final SupplyConstraintValidator supplyConstraintValidator;
+
+    public PrescriptionValidator() {
+        this.patientStateValidator = new PatientStateValidator();
+        this.drugInteractionValidator = new DrugInteractionValidator();
+        this.clinicalProtocolValidator = new ClinicalProtocolValidator();
+        this.supplyConstraintValidator = new SupplyConstraintValidator();
+    }
+
+    public boolean validatePrescription(Patient patient, List<Medication> medications, Date prescriptionDate) {
+        return patientStateValidator.validate(patient) &&
+               drugInteractionValidator.validate(patient, medications) &&
+               clinicalProtocolValidator.validate(patient, medications) &&
+               supplyConstraintValidator.validate(medications, prescriptionDate);
+    }
+}
+
+interface Validator<T> {
+    boolean validate(T t);
+}
+
+interface ValidatorWithMedications {
+    boolean validate(Patient patient, List<Medication> medications);
+}
+
+class PatientStateValidator implements Validator<Patient> {
+    @Override
+    public boolean validate(Patient patient) {
+        for (Medication med : patient.getMedications()) {
+            if (med.getName().equals("X")) {
+                if (!isValidWhiteBloodCellCount(patient)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private boolean isValidWhiteBloodCellCount(Patient patient) {
+        int wbcCount = patient.getWhiteBloodCellCount();
+        if (wbcCount > 200) {
+            return true;
+        }
+        if (patient.isGammaProtocol() && (wbcCount > 1500 || patient.isPost2019Relapse())) {
+            return true;
+        }
+        return false;
+    }
+}
+
+class DrugInteractionValidator implements ValidatorWithMedications {
+    @Override
+    public boolean validate(Patient patient, List<Medication> medications) {
+        boolean containsY = medications.stream().anyMatch(med -> med.getName().equals("Y"));
+        boolean containsZ = medications.stream().anyMatch(med -> med.getName().equals("Z"));
+
+        if (containsY && containsZ) {
+            return patient.hasBRCA1Marker() || isWednesdayWithIRMSurveillance();
+        }
+        return true;
+    }
+
+    private boolean isWednesdayWithIRMSurveillance() {
+        Calendar calendar = Calendar.getInstance();
+        return calendar.get(Calendar.DAY_OF_WEEK) == Calendar.WEDNESDAY;
+    }
+}
+
+class ClinicalProtocolValidator implements ValidatorWithMedications {
+    @Override
+    public boolean validate(Patient patient, List<Medication> medications) {
+        return true;
+    }
+}
+
+class SupplyConstraintValidator {
+    public boolean validate(List<Medication> medications, Date prescriptionDate) {
+        for (Medication med : medications) {
+            if (med.getName().equals("W")) {
+                int requiredStock = calculateRequiredStock(prescriptionDate);
+                if (getAvailableStock(medications) < requiredStock) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private int calculateRequiredStock(Date prescriptionDate) {
+        int requiredStock = 3;
+        if (isWeekend(prescriptionDate)) {
+            requiredStock += requiredStock * 0.20;
+        }
+        return requiredStock;
+    }
+
+    private int getAvailableStock(List<Medication> medications) {
+        int totalStock = 0;
+        for (Medication medication : medications) {
+            totalStock += medication.getStock();
+        }
+        return totalStock;
+    }
+
+    private boolean isWeekend(Date date) {
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(date);
+        int dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK);
+        return dayOfWeek == Calendar.SATURDAY || dayOfWeek == Calendar.SUNDAY;
+    }
+}
+
+class Patient {
+    private List<Medication> medications;
+    private int whiteBloodCellCount;
+    private boolean hasBRCA1Marker;
+    private boolean gammaProtocol;
+    private boolean post2019Relapse;
+
+    public Patient(List<Medication> medications, int whiteBloodCellCount, boolean hasBRCA1Marker, boolean gammaProtocol, boolean post2019Relapse) {
+        this.medications = medications;
+        this.whiteBloodCellCount = whiteBloodCellCount;
+        this.hasBRCA1Marker = hasBRCA1Marker;
+        this.gammaProtocol = gammaProtocol;
+        this.post2019Relapse = post2019Relapse;
+    }
+
+    public List<Medication> getMedications() {
+        return medications;
+    }
+
+    public int getWhiteBloodCellCount() {
+        return whiteBloodCellCount;
+    }
+
+    public boolean hasBRCA1Marker() {
+        return hasBRCA1Marker;
+    }
+
+    public boolean isGammaProtocol() {
+        return gammaProtocol;
+    }
+
+    public boolean isPost2019Relapse() {
+        return post2019Relapse;
+    }
+}
+
+class Medication {
+    private String name;
+    private int stock;
+
+    public Medication(String name, int stock) {
+        this.name = name;
+        this.stock = stock;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public int getStock() {
+        return stock;
+    }
+}
